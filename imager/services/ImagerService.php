@@ -1398,7 +1398,7 @@ class ImagerService extends BaseApplicationComponent
      */
     public function runJpegoptim($file)
     {
-        if (file_exists($this->getSetting('jpegoptimPath'))) {
+       // if (file_exists($this->getSetting('jpegoptimPath'))) {
             $cmd = $this->getSetting('jpegoptimPath');
             $cmd .= ' ';
             $cmd .= $this->getSetting('jpegoptimOptionString');
@@ -1406,9 +1406,9 @@ class ImagerService extends BaseApplicationComponent
             $cmd .= $file;
     
             $this->executeOptimize($cmd, $file);
-        } else {
-            ImagerPlugin::log("jpegoptim could not be found in the supplied path (" . $this->getSetting('jpegoptimPath') . ")", LogLevel::Error);
-        }
+//         } else {
+//             ImagerPlugin::log("jpegoptim could not be found in the supplied path (" . $this->getSetting('jpegoptimPath') . ")", LogLevel::Error);
+//         }
     }
 
     /**
