@@ -11,8 +11,9 @@ Whenever possible, Imager utilizes the image manipulation library [Imagine](http
 - You can transform both images in your asset sources, local and cloud-based ones, and external images on any url.
 - Transformed images are placed in their own folder, outside of the asset source folder.
 - You can even upload and serve the transformed images from AWS.
-- Optimize your created images automatically with jpegoptim, jpegtran, optipng or TinyPNG.
+- Optimize your transformed images automatically with jpegoptim, jpegtran, mozjpeg, optipng, pngquant, gifsicle or TinyPNG and make Google happy!
 - You can create interlaced/progressive images.
+- You can even transform animated gifs.
 - In addition to jpeg, gif and png, you can save images in webp format (if you have the necessary server requirements).
 - Crop position is relative (in percent) not confined to edges/center (but the built-in keywords still works).  
 `{ width: 600, height: 600, mode: 'crop', position: '20% 65%' }`
@@ -190,7 +191,7 @@ The default focal point to be used when cropping an image. This can either be in
 
 ### letterbox [array]
 *Default: `array('color'=>'#000', 'opacity'=>0)`*  
-Specifies the color and opacity to use for the background when using the letterbox resize method. Opacity is only applicable when saving the transformed file in png format.
+Specifies the color and opacity to use for the background when using the letterbox resize method. Opacity is only applicable when saving the transformed file in png format. Animated gifs will always have transparent backgrounds.
 
 ### hashFilename [bool|string]
 *Default: `'postfix'`*  
@@ -229,6 +230,19 @@ some environments.
 *Default: `false`*  
 By default Imager throws exceptions if file based operations fail, an external image can't be downloaded, etc. If `suppressExceptions` is set 
 to `true`, Imager will instead log errors to the log file, and return `null` to the template.   
+
+### fillTransforms [bool]
+*Default: `false`*  
+Enable this setting to automatically fill a transform array with additional transforms based on `fillAttribute` and `fillInterval`.    
+
+### fillAttribute [string]
+*Default: `'width'`*  
+Attribute to be used when filling in the transforms array. Can be any valid numeric attribute.
+     
+### fillInterval [string]
+*Default: `200`*  
+Interval to be used when filling in the transforms array. This should always be a positive integer, Imager will automatically figure out if
+the transform has been ordered in an ascending or descending order.
 
 ### jpegoptimEnabled [bool]
 *Default: `false`*  
@@ -289,6 +303,18 @@ Sets the path to your pngquant executable.
 ### pngquantOptionString [string]
 *Default: `'--strip --skip-if-larger'`*  
 Sets the options to use when running pngquant. Output file (`-o`) and force overwrite (`-f`) is added by Imager and should not be set in `pngquantOptionString`. 
+
+### gifsicleEnabled [bool]
+*Default: `false`*  
+Enable or disable image optimizations with [gifsicle](https://www.lcdf.org/gifsicle/).
+
+### gifsiclePath [string]
+*Default: `'/usr/bin/gifsicle'`*  
+Sets the path to your gifsicle executable.
+
+### gifsicleOptionString [string]
+*Default: `'--optimize=3 --colors 256'`*  
+Sets the options to use when running gifsicle. Batch mode (`-b`) is added by Imager and should not be set in `gifsicleOptionString`. 
 
 ### tinyPngEnabled [bool]
 *Default: `false`*  
@@ -443,7 +469,17 @@ Here's how the code would look with Imager:
 		{ width: 600, jpegQuality: 65 }, 
 		{ width: 400, jpegQuality: 65 }
 		], { ratio: 16/9, position: 'bottom-right', jpegQuality: 80 }) %}
+		
+Imager 1.5.0 also introduced a convenient `fillTransforms` config setting which makes the above code even simpler:
+		
+	{% set transformedImages = craft.imager.transformImage(image, [
+		{ width: 1200 }, 
+		{ width: 600, jpegQuality: 65 }, 
+		{ width: 400, jpegQuality: 65 }
+		], { ratio: 16/9, position: 'bottom-right', jpegQuality: 80 }, { fillTransforms: true }) %}
 
+See the `fillTransforms`, `fillAttribute` and `fillInterval` settings for more information.
+		
 The plugin also includes some additional methods that helps you streamline the creation of responsive images. With the above transformed images, you can output the appropriate srcset like this, with a base64-encoded placeholder in the src attribute:
 
     <img src="{{ craft.imager.base64Pixel(16, 9) }}" sizes="100vw" srcset="{{ craft.imager.srcset(transformedImages) }}">
@@ -705,6 +741,32 @@ The second parameter refers to which dither method is used. Allowed values are:
 Applies an unsharp mask with [Imagick's unsharpMaskImage method](http://php.net/manual/en/imagick.unsharpmaskimage.php). Example:
 
     {% set transformedImage = craft.imager.transformImage(image, { width: 500, effects: { unsharpMask: [0, 0.5, 1, 0.05] } }) %}
+
+### clut [array]
+Applies a [clut (color lookup table) effect](http://stackoverflow.com/questions/36823310/imagick-gradient-map/36825769#36825769) 
+to the image, using [Imagick's clutImage method](http://php.net/manual/en/imagick.clutimage.php). You probably want to use it
+together with modulate to get a real duotone effect. Example:
+
+    {% set transformedImage = craft.imager.transformImage(image, { width: 500, effects: { modulate: [100, 0, 100], clut: 'gradient:darkblue-aqua' } }) %}
+
+The parameter is the image definition string sent to [Imagick's newPseudoImage method](http://php.net/manual/en/imagick.newpseudoimage.php). You can use any 
+valid color values. Example with rgba colors:
+ 
+    {% set transformedImage = craft.imager.transformImage(image, { width: 500, effects: { modulate: [100, 0, 100], clut: 'gradient:rgba(255,0,0,0.8)-rgba(255,255,0,1)' } }) %}
+
+Please note that the alpha value doesn't actually make the color transparent, it just has the effect of moving the gradient's
+center point towards the color with the least transparency.  
+
+### quantize [array|int]
+Reduces the number of colors in an image, using [Imagick's quantizeImage method](http://php.net/manual/en/imagick.quantizeimage.php). This can help
+to reduce filesize, especially for gif images. Example:
+
+    {% set transformedImage = craft.imager.transformImage(image, { width: 500, effects: { quantize: 32 } }) %}
+
+The parameter can be an int, indicating the number of colors to reduce to, or an array that corresponds to the functions $numberColors (int), 
+$treedepth (int) and $dither (bool) parameters. Example with default treeDepth, but dithering:
+ 
+    {% set transformedImage = craft.imager.transformImage(image, { width: 500, effects: { quantize: [32, 0, true] } }) %}
 
 ### vignette [array]
 *The vignette effect is not yet finalized.*
